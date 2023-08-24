@@ -1,0 +1,786 @@
+using Krypton.Toolkit;
+using Krypton.Toolkit.Suite.Extended.Common;
+using Krypton.Toolkit.Suite.Extended.Data.Visualisation.ScottPlot;
+using NPOI.SS.Formula.Functions;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Windows.Markup;
+//1.ZLGCAN系列接口卡信息的数据类型。
+public struct VCI_BOARD_INFO
+{
+    public UInt16 hw_Version;
+    public UInt16 fw_Version;
+    public UInt16 dr_Version;
+    public UInt16 in_Version;
+    public UInt16 irq_Num;
+    public byte can_Num;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)] public byte[] str_Serial_Num;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 40)]
+    public byte[] str_hw_Type;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+    public byte[] Reserved;
+}
+
+
+/////////////////////////////////////////////////////
+//2.定义CAN信息帧的数据类型。
+unsafe public struct VCI_CAN_OBJ  //使用不安全代码
+{
+    public uint ID;
+    public uint TimeStamp;
+    public byte TimeFlag;
+    public byte SendType;
+    public byte RemoteFlag;//是否是远程帧
+    public byte ExternFlag;//是否是扩展帧
+    public byte DataLen;
+
+    public fixed byte Data[8];
+
+    public fixed byte Reserved[3];
+
+}
+////2.定义CAN信息帧的数据类型。
+//public struct VCI_CAN_OBJ 
+//{
+//    public UInt32 ID;
+//    public UInt32 TimeStamp;
+//    public byte TimeFlag;
+//    public byte SendType;
+//    public byte RemoteFlag;//是否是远程帧
+//    public byte ExternFlag;//是否是扩展帧
+//    public byte DataLen;
+//    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+//    public byte[] Data;
+//    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+//    public byte[] Reserved;
+
+//    public void Init()
+//    {
+//        Data = new byte[8];
+//        Reserved = new byte[3];
+//    }
+//}
+
+//3.定义CAN控制器状态的数据类型。
+public struct VCI_CAN_STATUS
+{
+    public byte ErrInterrupt;
+    public byte regMode;
+    public byte regStatus;
+    public byte regALCapture;
+    public byte regECCapture;
+    public byte regEWLimit;
+    public byte regRECounter;
+    public byte regTECounter;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+    public byte[] Reserved;
+}
+
+//4.定义错误信息的数据类型。
+public struct VCI_ERR_INFO
+{
+    public UInt32 ErrCode;
+    public byte Passive_ErrData1;
+    public byte Passive_ErrData2;
+    public byte Passive_ErrData3;
+    public byte ArLost_ErrData;
+}
+
+//5.定义初始化CAN的数据类型
+public struct VCI_INIT_CONFIG
+{
+    public UInt32 AccCode;
+    public UInt32 AccMask;
+    public UInt32 Reserved;
+    public byte Filter;
+    public byte Timing0;
+    public byte Timing1;
+    public byte Mode;
+}
+
+public struct CHGDESIPANDPORT
+{
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 10)]
+    public byte[] szpwd;
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
+    public byte[] szdesip;
+    public Int32 desport;
+
+    public void Init()
+    {
+        szpwd = new byte[10];
+        szdesip = new byte[20];
+    }
+}
+
+namespace KDDQ_CalibratorX.MetersStandards
+{
+    public class KDDQ_KDVI1000:IDevice
+    {
+        const int VCI_PCI5121 = 1;
+        const int VCI_PCI9810 = 2;
+        const int VCI_USBCAN1 = 3;
+        const int VCI_USBCAN2 = 4;
+        const int VCI_USBCAN2A = 4;
+        const int VCI_PCI9820 = 5;
+        const int VCI_CAN232 = 6;
+        const int VCI_PCI5110 = 7;
+        const int VCI_CANLITE = 8;
+        const int VCI_ISA9620 = 9;
+        const int VCI_ISA5420 = 10;
+        const int VCI_PC104CAN = 11;
+        const int VCI_CANETUDP = 12;
+        const int VCI_CANETE = 12;
+        const int VCI_DNP9810 = 13;
+        const int VCI_PCI9840 = 14;
+        const int VCI_PC104CAN2 = 15;
+        const int VCI_PCI9820I = 16;
+        const int VCI_CANETTCP = 17;
+        const int VCI_PEC9920 = 18;
+        const int VCI_PCI5010U = 19;
+        const int VCI_USBCAN_E_U = 20;
+        const int VCI_USBCAN_2E_U = 21;
+        const int VCI_PCI5020U = 22;
+        const int VCI_EG20T_CAN = 23;
+        const int VCI_PCIE9221 = 24;
+        const int VCI_PCIE9211 = 25;
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="DeviceType"></param>
+        /// <param name="DeviceInd"></param>
+        /// <param name="Reserved"></param>
+        /// <returns></returns>
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_OpenDevice(UInt32 DeviceType, UInt32 DeviceInd, UInt32 Reserved);
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_CloseDevice(UInt32 DeviceType, UInt32 DeviceInd);
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_InitCAN(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd, ref VCI_INIT_CONFIG pInitConfig);
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_ReadBoardInfo(UInt32 DeviceType, UInt32 DeviceInd, ref VCI_BOARD_INFO pInfo);
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_ReadErrInfo(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd, ref VCI_ERR_INFO pErrInfo);
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_ReadCANStatus(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd, ref VCI_CAN_STATUS pCANStatus);
+
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_GetReference(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd, UInt32 RefType, ref byte pData);
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_SetReference(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd, UInt32 RefType, ref byte pData);
+
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_GetReceiveNum(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd);
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_ClearBuffer(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd);
+
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_StartCAN(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd);
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_ResetCAN(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd);
+
+        [DllImport("controlcan.dll")]
+        static extern UInt32 VCI_Transmit(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd, ref VCI_CAN_OBJ pSend, UInt32 Len);
+
+        //[DllImport("controlcan.dll")]
+        //static extern UInt32 VCI_Receive(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd, ref VCI_CAN_OBJ pReceive, UInt32 Len, Int32 WaitTime);
+        [DllImport("controlcan.dll", CharSet = CharSet.Ansi)]
+        static extern UInt32 VCI_Receive(UInt32 DeviceType, UInt32 DeviceInd, UInt32 CANInd, IntPtr pReceive, UInt32 Len, Int32 WaitTime);
+
+        static UInt32 m_devtype = 4;//USBCAN2
+
+        UInt32 m_bOpen = 0;
+        UInt32 m_devind = 0;
+        UInt32 m_canind = 0;
+
+        VCI_CAN_OBJ[] m_recobj = new VCI_CAN_OBJ[50];
+
+        UInt32[] m_arrdevtype = new UInt32[20];
+
+        private TaskCompletionSource<string> _tcs;
+        private CancellationTokenSource _cts;
+
+        public class SendData
+        {
+            public string sendString { get; set; }
+
+            public string sendID { get; set; }
+        }
+
+        public KDDQ_KDVI1000(string portName)
+        {
+            
+        }
+
+        public async Task<string> ReadAsync(TimeSpan timeout)
+        {
+            _tcs = new TaskCompletionSource<string>();
+            _cts = new CancellationTokenSource(timeout);
+
+            _cts.Token.Register(() => _tcs.TrySetResult(null));
+            _ = CANDataReceivedAsync();
+            return await _tcs.Task;
+        }
+
+        public string ParseCommand(string command)
+        {
+            // 在这里添加解析指令的逻辑
+            // 这部分需要根据具体的设备协议来实现
+            return command;
+        }
+
+        public async Task ConnectAsync()
+        {
+            // 打开CAN设备
+            // ...
+
+            await Task.Delay(0);
+        }
+
+
+        private async Task CANDataReceivedAsync()
+        {
+            for (int i = 0; i < 300; i++)
+            {
+                await Task.Run(() => deocdeCanData());
+                await Task.Delay(100);
+            }
+
+        }
+
+        unsafe void deocdeCanData()
+        {
+
+            #region  主进程
+
+            UInt32 res = new UInt32();
+            res = VCI_GetReceiveNum(m_devtype, m_devind, m_canind);
+
+            if (res == 0)
+                return;
+
+            //res = VCI_Receive(m_devtype, m_devind, m_canind, ref m_recobj[0],50, 100);
+
+            UInt32 con_maxlen = 100;
+            IntPtr pt = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(VCI_CAN_OBJ)) * (Int32)con_maxlen);
+
+            res = VCI_Receive(m_devtype, m_devind, m_canind, pt, con_maxlen, 100);
+
+            for (UInt32 i = 0; i < res; i++)
+            {
+                VCI_CAN_OBJ obj = (VCI_CAN_OBJ)Marshal.PtrToStructure((IntPtr)((UInt32)pt + i * Marshal.SizeOf(typeof(VCI_CAN_OBJ))), typeof(VCI_CAN_OBJ));
+
+                string IDtemp = obj.ID.ToString("x").PadLeft(8, '0');//必须格式化成8字符字符串
+                string TypeID = IDtemp.Substring(2, 2);
+                string DA, SA;
+
+                DA = IDtemp.Substring(4, 2);
+                SA = IDtemp.Substring(6, 2);
+                //其他设备发送到工控
+                if (DA == "82")
+                {
+                    if (SA == "80")
+                    {
+                        if (TypeID == "01")
+                        {
+                            byte[] bytes = new byte[8];
+                            for (int h = 0; h < 8; h++)
+                            {
+                                bytes[h] = obj.Data[h];
+                            }
+                            var data  = BitConverter.ToDouble(bytes, 0);
+                            _tcs?.TrySetResult(data.ToString("F6"));
+                        }
+                        else if (TypeID == "02")
+                        {
+                            byte[] bytes = new byte[8];
+                            for (int h = 0; h < 8; h++)
+                            {
+                                bytes[h] = obj.Data[h];
+                            }
+                            var data = BitConverter.ToDouble(bytes, 0);
+                            _tcs?.TrySetResult(data.ToString("F6"));
+                        }
+
+
+                    }
+                }
+
+            }
+            Marshal.FreeHGlobal(pt);
+
+            #endregion
+
+
+        }
+
+
+        public async Task DisconnectAsync()
+        {
+            // 关闭CAN设备
+            // ...
+
+            await Task.Delay(0);
+        }
+
+        public void Dispose()
+        {
+            // 关闭CAN设备
+            if (m_bOpen == 1)
+            {
+                VCI_CloseDevice(m_devtype, m_devind);
+                m_bOpen = 0;
+            }
+
+
+            // 取消任务
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
+
+            // 尝试设置任务结果
+            _tcs?.TrySetCanceled();
+            _tcs = null;
+        }
+        public unsafe Task<string> WriteAsyncCAN(string ID, string SendData)
+        {
+            var task = Task.Run(() =>
+            {
+                if (m_bOpen != 0)
+                {
+                    UInt32 con_maxlen = 100;
+                    IntPtr pt = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(VCI_CAN_OBJ)) * (Int32)con_maxlen);
+
+                    VCI_CAN_OBJ sendobj = (VCI_CAN_OBJ)Marshal.PtrToStructure((IntPtr)((UInt32)pt + Marshal.SizeOf(typeof(VCI_CAN_OBJ))), typeof(VCI_CAN_OBJ));
+                    //sendobj.Init();
+                    sendobj.SendType = (byte)0;
+                    sendobj.RemoteFlag = (byte)0;
+                    sendobj.ExternFlag = (byte)1;
+                    sendobj.ID = System.Convert.ToUInt32("0x" + ID, 16);
+                    int len = (SendData.Length + 1) / 3;
+                    sendobj.DataLen = System.Convert.ToByte(len);
+                    String strdata = SendData;
+                    int i = -1;
+                    if (i++ < len - 1)
+                        sendobj.Data[0] = System.Convert.ToByte("0x" + strdata.Substring(i * 3, 2), 16);
+                    if (i++ < len - 1)
+                        sendobj.Data[1] = System.Convert.ToByte("0x" + strdata.Substring(i * 3, 2), 16);
+                    if (i++ < len - 1)
+                        sendobj.Data[2] = System.Convert.ToByte("0x" + strdata.Substring(i * 3, 2), 16);
+                    if (i++ < len - 1)
+                        sendobj.Data[3] = System.Convert.ToByte("0x" + strdata.Substring(i * 3, 2), 16);
+                    if (i++ < len - 1)
+                        sendobj.Data[4] = System.Convert.ToByte("0x" + strdata.Substring(i * 3, 2), 16);
+                    if (i++ < len - 1)
+                        sendobj.Data[5] = System.Convert.ToByte("0x" + strdata.Substring(i * 3, 2), 16);
+                    if (i++ < len - 1)
+                        sendobj.Data[6] = System.Convert.ToByte("0x" + strdata.Substring(i * 3, 2), 16);
+                    if (i++ < len - 1)
+                        sendobj.Data[7] = System.Convert.ToByte("0x" + strdata.Substring(i * 3, 2), 16);
+
+                    if (VCI_Transmit(m_devtype, m_devind, m_canind, ref sendobj, 1) == 0)
+                    {
+                        KryptonMessageBox.Show("CAN发送失败");
+                        VCI_CloseDevice(m_devtype, m_devind);
+                        m_bOpen = 0;
+                        return "";
+
+                    }
+
+                    return "";
+                }
+                else
+                {
+                    return "";
+                }
+
+
+            });
+
+            return task;
+
+
+
+
+            //Marshal.FreeHGlobal(pt);
+        }
+
+        Task IDevice.ConnectAsync(string portname)
+        {
+            try
+            {
+                m_devtype = VCI_USBCAN1;
+                m_devind = Convert.ToUInt32("0");//索引号
+                m_canind = Convert.ToUInt32("0");//CAN通道
+                VCI_OpenDevice(m_devtype, m_devind, 0);
+                m_bOpen = 1;
+                VCI_INIT_CONFIG config = new VCI_INIT_CONFIG();
+                // 读取INI文件
+                var settings = new NameValueCollection();
+                var lines = File.ReadAllLines("settings.ini");
+                string currentSection = "";
+                foreach (var line in lines)
+                {
+                    if (line.StartsWith("[") && line.EndsWith("]"))
+                    {
+                        // 这是一个新的段，更新当前段的名称
+                        currentSection = line.Trim('[', ']');
+                    }
+                    else
+                    {
+                        var parts = line.Split(new[] { '=' }, StringSplitOptions.RemoveEmptyEntries);
+
+                        if (parts.Length >= 2)
+                        {
+                            var key = currentSection + "." + parts[0].Trim();
+                            var value = parts[1].Trim();
+                            settings.Add(key, value);
+                        }
+                    }
+                }
+
+
+
+                // 从INI文件中获取CAN设置
+                string accCodeString = settings["CAN.AccCode"];
+                config.AccCode = System.Convert.ToUInt32("0x" + accCodeString.Trim('"'), 16);
+
+                string accMaskString = settings["CAN.AccMask"];
+                config.AccMask = System.Convert.ToUInt32("0x" + accMaskString.Trim('"'), 16);
+
+                string timing0String = settings["CAN.Timing0"];
+                config.Timing0 = System.Convert.ToByte("0x" + timing0String.Trim('"'), 16);
+
+                string timing1String = settings["CAN.Timing1"];
+                config.Timing1 = System.Convert.ToByte("0x" + timing1String.Trim('"'), 16);
+
+                string filterString = settings["CAN.Filter"];
+                config.Filter = (Byte)System.Convert.ToInt32(filterString.Trim('"'));
+
+                string modeString = settings["CAN.Mode"];
+                config.Mode = (Byte)System.Convert.ToInt32(modeString.Trim('"'));
+
+
+                VCI_InitCAN(m_devtype, m_devind, m_canind, ref config);
+
+                VCI_StartCAN(m_devtype, m_devind, m_canind);
+            }
+            catch (Exception e)
+            {
+                KryptonMessageBox.Show(e.ToString());
+            }
+
+            return Task.CompletedTask;
+        }
+
+        Task IDevice.WriteAsync(string data)
+        {
+            throw new NotImplementedException();
+        }
+
+        public List<SendData> SplitAndPackageCommandCAN(string keywords, string values)
+        {
+            List<SendData> ret = new List<SendData>();
+
+            if (!keywords.Contains(";") && !values.Contains(";"))
+            {
+                // 如果没有分号，直接使用GenerateCommand生成指令并返回
+                SendData command = GenerateCommandCAN(keywords, values);
+                ret.Add(command);
+            }
+            else
+            {
+                var keywordList = keywords.Split(';');
+                //var valueList = values.Split(';');
+
+                for (int i = 0; i < keywordList.Length; i++)
+                {
+                    SendData command = GenerateCommandCAN(keywordList[i], values);
+                    ret.Add(command);
+                }
+            }
+
+            return ret;
+        }
+
+
+        /// <summary>
+        /// 根据关键字生成指令的逻辑
+        /// 这部分需要根据具体的设备协议来实现
+        /// </summary>
+        /// <param name="keyword"></param>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        /// <exception cref="NotImplementedException"></exception>
+        public SendData GenerateCommandCAN(string keyword, string value)
+        {
+            string strTemp = string.Empty;
+            SendData ret = new SendData();
+            UInt32 tmpint = 0;
+            bool retConvert = uint.TryParse(value,out tmpint);
+            string tmp = string.Format("{0:x}", tmpint).PadLeft(8, '0');
+            string tmp2 = tmp.Substring(0, 2).PadLeft(2, '0');
+            string tmp3 = tmp.Substring(2, 2).PadLeft(2, '0');
+            string tmp4 = tmp.Substring(4, 2).PadLeft(2, '0');
+            string tmp5 = tmp.Substring(6, 2).PadLeft(2, '0');
+            ret.sendString = $"{tmp2} {tmp3} {tmp4} {tmp5} 00 00 00 00";
+
+            switch (keyword)
+            {
+                case "CONFIG_MODE_ADJ":
+                    ret.sendID = "1C008082";
+                    break;
+                case "CONFIG_IMP_GEAR":
+                    ret.sendID = "1C018082";
+                    break;                
+                case "OUTP_IMP_CALI":
+                    ret.sendID = "1C078082";
+                    break;
+                case "CONFIG_CURR_GEAR_ADJ":
+                    ret.sendID = "1C028082";
+                    break;
+                case "CONFIG_MODE_FREQ":
+                    ret.sendID = "1C038082";
+                    break;
+                case "CONFIG_QUADRANT":
+                    ret.sendID = "1C048082";
+                    break;
+                case "CONFIG_PARA_TYPE":
+                    ret.sendID = "1C058082";
+                    break;
+                case "WRITE_PARA":
+                    ret.sendID = "1C068082";
+                    break;
+                case "WRITE_PARA_DOUBLE":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C0A8082";
+                    break;
+                case "SHOW_DEBUG_WINDOW":
+                    ret.sendID = "1C098082";
+                    break;
+
+                case "OUTP_CALI":
+                    ret.sendID = "1C078082";
+                    break;
+                case "CONFIG_CAl_SAVE":
+                    ret.sendID = "1C088082";
+                    break;
+                case "CONFIG_FUN":
+                    ret.sendID = "1C108082";
+                    break;
+                case "OUTP":
+                    ret.sendID = "1C118082";
+                    break;
+                case "CONFIG_IMP_FREQ":
+                    ret.sendID = "1C128082";
+                    break;                
+                case "CONFIG_CURR_GEAR_MEAS":
+                    ret.sendID = "1C138082";
+                    break;
+                case "CONFIG_IMP_MOUDULE":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C148082";
+                    break;
+                case "CONFIG_IMP_PHASE":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C158082";
+                    break;
+                case "CONFIG_SPLITE_FREQ":
+                    ret.sendID = "1C208082";
+                    break;
+                case "CONFIG_IMP_SPLITER_GEAR":
+                    ret.sendID = "1C218082";
+                    break;
+                case "OUTP_SPLITER":
+                    ret.sendID = "1C228082";
+                    break;
+                case "OUTP_IMP_SPLITER":
+                    ret.sendID = "1C298082";
+                    break;
+                case "CONFIG_SPLITE_X1_MEAS":
+                    ret.sendID = "1C238082";
+                    ConvertDoubleStr2ByteStr(value,out strTemp);
+                    ret.sendString = strTemp;
+                    break;
+                case "CONFIG_SPLITE_Y1_MEAS":
+                    ret.sendID = "1C248082";
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    break;
+                case "CONFIG_SPLITE_X2_MEAS":
+                    ret.sendID = "1C258082";
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    break;
+                case "CONFIG_SPLITE_Y2_MEAS":
+                    ret.sendID = "1C268082";
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    break;
+                case "CAL_SAVE_SPLITER_MEAS":
+                    ret.sendID = "1C278082";
+                    break;
+                case "MEASURE_RMS":
+                    ret.sendID = "1C288082";
+                    break;
+                case "CONFIG_SPLITE_X1_OUTP":
+                    ret.sendID = "1C308082";
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    break;
+                case "CONFIG_SPLITE_Y1_OUTP":
+                    ret.sendID = "1C318082";
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    break;
+                case "CONFIG_SPLITE_X2_OUTP":
+                    ret.sendID = "1C328082";
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    break;
+                case "CONFIG_SPLITE_Y2_OUTP":
+                    ret.sendID = "1C338082";
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    break;
+                case "CAL_SAVE_SPLITER":
+                    ret.sendID = "1C348082";
+                    break;
+                case "CONFIG_PHASE_SPLITER":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C358082";
+                    break;
+                case "SHOW_MASK":
+                    ret.sendID = "1C098082";
+                    break;
+                case "CONFIG_CURR_GEAR_FL_MEAS":
+                    ret.sendID = "1C508082";
+                    break;
+                case "CONFUG_SPLIT_FL_MEAS":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C518082";
+                    break;
+                case "CONFI_PHASE_FL_MEAS":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C528082";
+                    break;
+                case "CONFI_FREQ_FL_MEAS":
+                    ret.sendID = "1C538082";
+                    break;
+                case "OUTP_FL_MEAS":
+                    ret.sendID = "1C548082";
+                    break;
+                case "MEAS_VALUE_FL_MEAS":
+                    ret.sendID = "1C558082";
+                    break;
+                case "OUTP_DW_ADJ":
+                    ret.sendID = "1C408082";
+                    break;
+                case "CONFIG_DW_X1_RANG1_OUTP":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C418082";
+                    break;
+                case "CONFIG_DW_Y1_RANG1_OUTP":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C428082";
+                    break;
+                case "CONFIG_DW_X2_RANG1_OUTP":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C438082";
+                    break;
+                case "CONFIG_DW_Y2_RANG1_OUTP":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C448082";
+                    break;
+                case "CAL_V_DW_RANG1":
+                    ret.sendID = "1C458082";
+                    break;
+                case "CONFIG_DW_X1_RANG2_OUTP":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C468082";
+                    break;
+                case "CONFIG_DW_Y1_RANG2_OUTP":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C478082";
+                    break;
+                case "CONFIG_DW_X2_RANG2_OUTP":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C488082";
+                    break;
+                case "CONFIG_DW_Y2_RANG2_OUTP":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C498082";
+                    break;
+                case "CAL_V_DW_RANG2":
+                    ret.sendID = "1C4a8082";
+                    break;
+                case "OUTP_DW_MEAS":
+                    ret.sendID = "1C628082";
+                    break;
+                case "CONFIG_FREQ_DW_MEAS":
+                    ret.sendID = "1C618082";
+                    break;
+                case "CONFIG_VOLT_DW_MEAS":
+                    ConvertDoubleStr2ByteStr(value, out strTemp);
+                    ret.sendString = strTemp;
+                    ret.sendID = "1C628082";
+                    break;
+                default:
+                    ret.sendString = "00 00 00 00 00 00 00 00";
+                    ret.sendID = "0000ffff";
+                    break;
+            }
+
+            return ret;
+        }
+
+        List<string> IDevice.SplitAndPackageCommand(string keywords, string values)
+        {
+            throw new NotImplementedException();
+        }
+
+        string IDevice.GenerateCommand(string keyword, string value)
+        {
+            throw new NotImplementedException();
+        }
+
+
+        public void ConvertDoubleStr2ByteStr(string value,out string sendString)
+        {
+            byte[] byteArray = new byte[8];
+            double outputValue = 0;
+            double.TryParse(value, out outputValue);
+            byteArray = BitConverter.GetBytes(outputValue);
+            sendString = string.Empty;
+            for (int i = 0; i < 8; i++)
+            {
+                sendString += $"{byteArray[i].ToString("X2")} ";
+            }
+            sendString = sendString.TrimEnd();
+        }
+    }
+}
